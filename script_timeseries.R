@@ -7,6 +7,8 @@ library(readr)
 library(lubridate)
 library(ggplot2)
 library(ggthemes)
+library(tseries)
+library()
 
 # Import des données
 ind <- read_csv2("donnees/valeurs_mensuelles.csv", col_names = TRUE) %>% 
@@ -19,12 +21,13 @@ ind <- read_csv2("donnees/valeurs_mensuelles.csv", col_names = TRUE) %>%
 
 
 # Graphe de la série
-ind %>% 
+graphe_brut <- ind %>% 
   arrange(Date) %>% 
   ggplot(aes(x = Date, y = Valeur)) +
   geom_line() +
-  theme_minimal() %>% 
-  ggsave("donnes_brutes.png")
+  theme_minimal()
+ggsave(filename = "donneesbrutes.png", plot = ind, device = "png")
+
 
 
 # Partie I
