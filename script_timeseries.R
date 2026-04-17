@@ -8,7 +8,7 @@ library(lubridate)
 library(ggplot2)
 library(ggthemes)
 library(tseries)
-library()
+library(forecast)
 
 # Import des données
 ind <- read_csv2("donnees/valeurs_mensuelles.csv", col_names = TRUE) %>% 
@@ -36,4 +36,13 @@ ggsave(filename = "donneesbrutes.png", plot = ind, device = "png")
 # 1. Que représente la série choisie ?
 
 
+# On fait une transformation de Box-Cox pour diminuer la variations de la
+# variance en fonction du temps
+lambda <- BoxCox.lambda(ind$Valeur)
+ind_bc <- BoxCox(ind$Valeur, lambda)
+plot(ind$Date, ind$Valeur, type = "l")
+
+# Puis on prend la "first difference" pour supprimer les variations "lentes"
+ind_diff1 <- diff(ind$Valeur)
+plot(ind$Date[-1], ind_diff1, type = "l") # Ça semble relativement stationnaire
 
