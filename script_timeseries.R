@@ -47,7 +47,7 @@ plot(cbind(ind_zoo, ind_diff))
 
 # on prépare la série sans NA
 ind_diff1 <- coredata(ind_diff)
-ind_diff1 <- x[!is.na(ind_diff1)]
+ind_diff1 <- ind_diff1[!is.na(ind_diff1)]
 
 # Test de racine unitaire ----
 # on fait une régression linéaire pour savoir comment spécifier notre test ADF
