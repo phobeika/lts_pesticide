@@ -1,0 +1,500 @@
+# ==============================================================================
+# VERSION CORRIGÉE DU TP5
+# ==============================================================================
+# Le code qui suit est une version corrigée du TP5.
+#
+# Deux modifications principales ont été apportées :
+# 1. la méthodologie de Box-Jenkins a été remise dans le bon ordre ;
+# 2. une légère coquille a été corrigée dans la fonction de calcul
+#    du R² ajusté.
+#
+# Ce script utilise volontairement des boucles et des étapes explicites
+# afin de faciliter la lecture et le suivi de la démarche.
+# En pratique, pour des raisons de concision et souvent d'efficacité,
+# il est généralement conseillé d'utiliser, dès que possible,
+# des fonctions comme sapply(), lapply(), etc.
+#
+# Dans ce TP, on conserve l'usage du test ADF pour l'étude de racine unitaire.
+# Toutefois, en pratique, il est préférable de croiser les résultats de
+# plusieurs tests, en particulier :
+# - ADF,
+# - PP,
+# - KPSS.
+# Cela permet d'obtenir des conclusions plus robustes.
+#
+# Ce code est volontairement très commenté.
+# Il reprend aussi l'essentiel des remarques méthodologiques faites en classe.
+#
+# ------------------------------------------------------------------------------
+# Rappels sur l'interprétation des tests statistiques
+# ------------------------------------------------------------------------------
+# 1. Interprétation d'une p-value
+#    - Si la p-value est inférieure au seuil choisi
+#      (par exemple 5 %, soit 0.05), on rejette l'hypothèse nulle H_0.
+#    - Si la p-value est supérieure au seuil choisi, on ne rejette pas H_0.
+#
+# 2. Interprétation d'une statistique de test à l'aide d'une valeur critique
+#    - Pour un test bilatéral :
+#      si |statistique de test| > valeur critique,
+#      on rejette H_0 ;
+#      sinon, on ne rejette pas H_0.
+#    - Pour un test unilatéral, la règle dépend du côté du rejet.
+#
+# 3. Attention
+#    - "Ne pas rejeter H_0" ne signifie pas "accepter H_0 comme vraie".
+#    - Cela signifie seulement que l'échantillon n'apporte pas ici
+#      assez d'évidence contre H_0 au seuil retenu.
+#
+# 4. Important
+#    - Un test ne s'interprète que si ses conditions de validité
+#      sont vérifiées.
+#    - En particulier, dans ce TP, plusieurs sorties intermédiaires
+#      ne doivent pas être interprétées tant que la validité du modèle
+#      ou de la régression auxiliaire n'a pas été vérifiée.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Définition du répertoire de travail
+# ------------------------------------------------------------------------------
+# Le répertoire de travail doit contenir le fichier de données utilisé dans le TP.
+#
+# Remarque :
+# Sous Windows, l'écriture du chemin peut parfois poser problème à cause des
+# conventions de séparation des dossiers (\ ou /).
+# Si besoin, il est possible de définir le répertoire de travail directement
+# depuis RStudio via :
+# Session > Set Working Directory > Choose Directory...
+# Il suffit alors de sélectionner le dossier dans lequel se trouve le fichier
+# de données.
+
+path <- "/Chemin/Vers/Votre/Dossier"
+setwd(path)
+
+# ------------------------------------------------------------------------------
+# Q1 - Importation des données
+# ------------------------------------------------------------------------------
+datafile <- "data_tp5.csv"
+spread <- read.csv(datafile, sep = ";")
+
+# Le tableau contient deux variables :
+# - dates  : dates mensuelles sous forme textuelle, au format "YYYYmM" ou "YYYYmMM"
+# - spread : spread de taux
+
+View(spread)
+
+# ------------------------------------------------------------------------------
+# Q2 - Représentation graphique du spread et de sa différentielle
+# ------------------------------------------------------------------------------
+library(zoo)
+
+# Extraction des dates sous forme textuelle
+dates_char <- as.character(spread$dates)
+
+# Vérification de la période d'observation
+dates_char[1]        # mars 1986
+tail(dates_char, 1)  # avril 2007
+
+# Construction de l'index mensuel
+dates <- as.yearmon(seq(from = 1986 + 2 / 12, to = 2007 + 3 / 12, by = 1 / 12))
+
+# Conversion du spread en série temporelle mensuelle
+spread <- zoo(spread$spread, order.by = dates)
+
+# Calcul de la première différence : spread_t - spread_{t-1}
+dspread <- diff(spread, lag = 1)
+
+# Le spread semble présenter une forte persistance,
+# avec une tendance non constante, possiblement stochastique.
+# Sa première différence paraît plus proche d'un comportement stationnaire,
+# avec une évolution plus stable, dans une sorte de "couloir".
+plot(cbind(spread, dspread))
+
+
+# ------------------------------------------------------------------------------
+# Q3 - Test de racine unitaire
+# ------------------------------------------------------------------------------
+
+# Quel test ADF faut-il utiliser ?
+# On commence par examiner si la série semble comporter
+# une constante et une tendance.
+
+# IMPORTANT :
+# La régression linéaire suivante est utilisée ici comme
+# un simple outil descriptif.
+# Les p-values de cette sortie ne doivent pas être interprétées,
+# car les hypothèses usuelles de la régression linéaire
+# ne sont pas du tout vérifiées dans ce contexte.
+# Cette étape sert uniquement à guider le choix de la spécification
+# du test ADF.
+summary(lm(spread ~ dates))
+
+# Installation et chargement du package
+install.packages("fUnitRoots")
+library(fUnitRoots)
+
+# La régression descriptive met en évidence une constante marquée,
+# tandis que le graphique suggère la présence d'une tendance stochastique.
+# On retient donc une spécification avec constante et tendance.
+adf <- adfTest(spread, lags = 0, type = "ct")
+adf
+
+# Rappel :
+# Le test ADF repose sur l'estimation d'une régression:
+#
+#   X[t] - X[t-1] = a + b * t + pi * X[t-1]
+#                   + sum_{i=1}^k pi_i * (X[t-i] - X[t-i-1]) + epsilon[t]
+#
+# La forme exacte de cette régression dépend du test retenu
+# (avec ou sans constante, avec ou sans tendance).
+#
+# Le test ADF n'est interprétable que si cette régression est valide.
+# En particulier, les résidus epsilon[t] doivent pouvoir être assimilés
+# à un bruit blanc.
+# Il faut donc vérifier l'absence d'autocorrélation résiduelle avant
+# d'interpréter la sortie du test.
+
+# ------------------------------------------------------------------------------
+# Test de Ljung-Box
+# ------------------------------------------------------------------------------
+# Cette fonction calcule les p-values du test de Ljung-Box
+# pour les retards l = 1, ..., k.
+#
+# H_0 : rho_1 = rho_2 = ... = rho_l = 0,
+# où l désigne le retard testé.
+# Autrement dit, il n'y a pas d'autocorrélation résiduelle
+# jusqu'au retard l considéré.
+#
+# Arguments :
+# - series : série sur laquelle le test est appliqué (des résidus, en général)
+# - k      : nombre maximal de retards testés (e.g. 24 pour les data mensuelles)
+# - fitdf  : nombre de degrés de liberté à retirer
+#            (le nombre de paramètres estimés par le modèle qui a donné ces résidus)
+#
+# La fonction renvoie une matrice à deux colonnes :
+# - lag  : le retard considéré
+# - pval : la p-value associée au test
+
+Qtests <- function(series, k, fitdf = 0) {
+    pvals <- matrix(NA, nrow = k, ncol = 2)
+    colnames(pvals) <- c("lag", "pval")
+    
+    for (l in 1:k) {
+        pvals[l, "lag"] <- l
+        
+        if (l <= fitdf) {
+            pvals[l, "pval"] <- NA
+        } else {
+            pvals[l, "pval"] <- Box.test(
+                series,
+                lag = l,
+                type = "Ljung-Box",
+                fitdf = fitdf
+            )$p.value
+        }
+    }
+    
+    return(pvals)
+}
+
+# ------------------------------------------------------------------------------
+# Vérification de la validité du test ADF
+# ------------------------------------------------------------------------------
+# Le test ADF n'est interprétable que si les résidus de la
+# régression peuvent être considérés comme un bruit blanc faible.
+
+# Pour récupérer ces résidus, on peut commencer par consulter
+# l'aide de la fonction :
+?adfTest
+
+# On peut aussi examiner directement la structure de l'objet renvoyé :
+str(adf)
+
+# Les résidus de la régression sont stockés dans :
+# adf@test$lm$residuals
+
+# On teste alors ces résidus pour vérifier l'absence
+# d'autocorrélation résiduelle.
+Qtests(adf@test$lm$residuals, 24, fitdf = length(adf@test$lm$coefficients))
+
+# Ici, les résidus apparaissent autocorrélés.
+# Le test ADF précédent n'est donc pas valide en l'état.
+# Sa sortie ne doit pas être interprétée.
+
+# On ajoute des retards jusqu'à obtenir des résidus décorrélés
+series <- spread
+kmax <- 24
+adftype <- "ct"
+
+adfTest_valid <- function(series, kmax, adftype) {
+    k <- 0
+    is_white_noise <- FALSE
+    
+    # Tant que les résidus restent autocorrélés
+    # et que le nombre maximal de retards n'est pas dépassé
+    while (is_white_noise == FALSE && k <= kmax) {
+        # Message de suivi
+        cat(paste0("ADF with ", k, " lags: residuals OK? "))
+        
+        # Calcul du test ADF avec k retards
+        adf <- adfTest(series, lags = k, type = adftype)
+        
+        # Récupération des p-values des tests de Ljung-Box
+        # sur les résidus de la régression ADF
+        pvals <- Qtests(
+            adf@test$lm$residuals,
+            24,
+            fitdf = length(adf@test$lm$coefficients)
+        )[, 2]
+        
+        # Si aucune p-value n'est inférieure à 5 %,
+        # on considère que les résidus sont décorrélés
+        if (sum(pvals < 0.05, na.rm = TRUE) == 0) {
+            is_white_noise <- 1
+            cat("OK\n")
+        } else {
+            cat("nope\n")
+            k <- k + 1
+        }
+    }
+    
+    # Si aucun nombre de retards <= kmax ne convient,
+    # le dernier test obtenu ne doit pas être interprété
+    if (is_white_noise == FALSE) {
+        warning("Aucun lag <= kmax ne permet d'obtenir des résidus décorrélés.")
+    }
+    
+    return(adf)
+}
+adf <- adfTest_valid(spread, 24, adftype = "ct")
+
+# La fonction a bien ajouté suffisamment de retards :
+# aucun test de Ljung-Box ne rejette l'hypothèse nulle.
+Qtests(adf@test$lm$residuals, 24, fitdf = length(adf@test$lm$coefficients))
+
+# Le test ADF est maintenant interprétable.
+# Au seuil de 5 %, l'hypothèse de racine unitaire n'est pas rejetée.
+adf
+
+# ------------------------------------------------------------------------------
+# Passage à la série différenciée
+# ------------------------------------------------------------------------------
+
+# Quel test ADF faut-il utiliser ?
+# On commence par examiner si la série différenciée semble
+# comporter une constante ou une tendance.
+
+# IMPORTANT :
+# Comme précédemment, cette régression est utilisée ici
+# uniquement comme outil descriptif.
+# Les p-values de cette sortie ne doivent pas être interprétées.
+summary(lm(dspread ~ dates[-1]))
+
+# On procède ensuite directement à la recherche d'un nombre
+# de retards rendant les résidus de la régression auxiliaire
+# compatibles avec l'hypothèse de bruit blanc.
+# Ici, le nombre de retards retenu est 0.
+adf <- adfTest_valid(dspread, 24, "nc")
+
+# Vérification : aucun test de Ljung-Box ne rejette
+# l'hypothèse nulle d'absence d'autocorrélation résiduelle.
+Qtests(adf@test$lm$residuals, 24, fitdf = length(adf@test$lm$coefficients))
+
+# Le test ADF est donc valide ici.
+# Il rejette l'hypothèse de racine unitaire au seuil de 5 %.
+adf
+
+
+# ------------------------------------------------------------------------------
+# Q4 - Étude des autocorrélations pour la modélisation ARMA de dspread
+#      (ou ARIMA si l'on raisonne sur spread)
+# ------------------------------------------------------------------------------
+# On examine les fonctions d'autocorrélation simple et partielle
+# jusqu'à 24 retards, soit 2 ans pour des données mensuelles.
+# Ce choix reste en partie arbitraire, mais au-delà de 2 ans,
+# une dépendance directe paraît moins probable.
+
+par(mfrow = c(1, 2))
+pacf(dspread, 24)
+acf(dspread, 24)
+
+# On retient ici, de façon exploratoire, des ordres maximaux
+# égaux à 3 pour les parties AR et MA, en raison des pics observés.
+pmax <- 3
+qmax <- 3
+
+# ------------------------------------------------------------
+# Q5 à Q7 - Sélection et validation des modèles ARMA pour dspread
+# ------------------------------------------------------------
+# La logique de Box-Jenkins est la suivante :
+# 1. on retient d'abord les modèles valides
+#    (résidus assimilables à des bruits blancs) ;
+# 2. parmi eux, on vérifie la significativité
+#    du dernier coefficient AR et du dernier coefficient MA ;
+#    par exemple, pour un ARMA(3,2), on s'intéresse
+#    aux coefficients de X[t-3] et de epsilon[t-2] ;
+# 3. on compare ensuite les modèles restants via l'AIC et le BIC ;
+# 4. si besoin, on départage les choix AIC et BIC avec un autre critère
+#    adapté au problème : pouvoir prédictif, erreur de prévision, etc.
+
+# Ensemble des combinaisons (p, q) testées
+pqs <- expand.grid(0:pmax, 0:qmax)
+
+# Matrices de stockage
+mat <- matrix(NA, nrow = pmax + 1, ncol = qmax + 1)
+rownames(mat) <- paste0("p=", 0:pmax)
+colnames(mat) <- paste0("q=", 0:qmax)
+
+valids <- mat
+wellfitted <- mat
+AICs <- mat
+BICs <- mat
+
+# Ajustement de tous les modèles candidats
+for (row in 1:nrow(pqs)) {
+    p <- pqs[row, 1]
+    q <- pqs[row, 2]
+    
+    estim <- try(arima(dspread, c(p, 0, q), include.mean = FALSE), silent = TRUE)
+    
+    if (inherits(estim, "try-error")) {
+        valids[p + 1, q + 1] <- FALSE
+        wellfitted[p + 1, q + 1] <- FALSE
+        AICs[p + 1, q + 1] <- NA
+        BICs[p + 1, q + 1] <- NA
+    } else {
+        AICs[p + 1, q + 1] <- estim$aic
+        BICs[p + 1, q + 1] <- BIC(estim)
+        
+        # ----------------------------------------------------------
+        # Validité : résidus assimilables à un bruit blanc faible
+        # ----------------------------------------------------------
+        fitdf <- length(estim$coef)
+        lb <- Qtests(estim$residuals, 24, fitdf = fitdf)
+        valids[p + 1, q + 1] <- all(lb[, 2] > 0.05, na.rm = TRUE)
+        
+        # ----------------------------------------------------------
+        # Qualité d'ajustement :
+        # on regarde surtout le dernier coefficient AR
+        # et le dernier coefficient MA lorsqu'ils existent
+        # ----------------------------------------------------------
+        tstats <- abs(estim$coef / sqrt(diag(estim$var.coef)))
+        
+        ar_ok <- TRUE
+        ma_ok <- TRUE
+        
+        if (p > 0) {
+            ar_ok <- tstats[p] >= 1.96
+        }
+        
+        if (q > 0) {
+            ma_ok <- tstats[p + q] >= 1.96
+        }
+        
+        wellfitted[p + 1, q + 1] <- ar_ok && ma_ok
+    }
+}
+
+# Matrice de validité
+valids
+
+# Matrice de qualité d'ajustement
+wellfitted
+
+# Matrices des critères d'information
+AICs
+BICs
+
+# ------------------------------------------------------------------------------
+# Modèles à la fois valides et bien ajustés
+# ------------------------------------------------------------------------------
+selected <- valids & wellfitted
+selected
+
+# ------------------------------------------------------------------------------
+# Meilleur modèle selon l'AIC parmi les modèles retenus
+# ------------------------------------------------------------------------------
+AICs_selected <- AICs
+AICs_selected[!selected] <- NA
+AICs_selected
+
+AICs_selected == min(AICs_selected, na.rm = TRUE)
+
+# ------------------------------------------------------------------------------
+# Meilleur modèle selon le BIC parmi les modèles retenus
+# ------------------------------------------------------------------------------
+BICs_selected <- BICs
+BICs_selected[!selected] <- NA
+BICs_selected
+
+BICs_selected == min(BICs_selected, na.rm = TRUE)
+
+# ------------------------------------------------------------------------------
+# Q8 - Candidats possibles : ARIMA(3, 1, 0) par AIC et ARIMA(0, 1, 1) par BIC
+# ------------------------------------------------------------------------------
+
+arima310 <- arima(spread, c(3, 1, 0), include.mean = FALSE)
+arima011 <- arima(spread, c(0, 1, 1), include.mean = FALSE)
+
+# ------------------------------------------------------------------------------
+# Q9 - Effet d'une valeur aberrante
+# ------------------------------------------------------------------------------
+
+adj_r2 <- function(model) {
+    p <- model$arma[1]
+    q <- model$arma[2]
+    n <- model$nobs - max(p, q)
+    
+    # Somme des carrés des résidus
+    ss_res <- sum(model$residuals^2)
+    
+    # Somme des carrés totaux de la série différenciée
+    ss_tot <- sum(dspread[-c(1:max(p, q))]^2)
+    
+    adj_r2 <- 1 - (ss_res / (n - p - q - 1)) / (ss_tot / (n - 1))
+    return(adj_r2)
+}
+
+adj_r2(arima310)
+adj_r2(arima011)
+
+# Le paramètre xreg permet d'ajouter une variable exogène au modèle.
+# On introduit ici une indicatrice pour la date correspondant à la valeur aberrante.
+
+dev.off()
+plot(arima310$residuals)
+axis(side = 1, 2001 + 11 / 12)
+
+dummy <- zoo(numeric(length(spread)), order.by = dates)
+dummy[as.yearmon(2001 + 11 / 12)] <- 1
+
+arima310dummy <- arima(spread, c(3, 1, 0), include.mean = FALSE, xreg = dummy)
+arima011dummy <- arima(spread, c(0, 1, 1), include.mean = FALSE, xreg = dummy)
+
+adj_r2(arima310dummy)
+adj_r2(arima011dummy)
+
+dev.off()
+
+plot(arima310$residuals)      # Pic important
+axis(side = 1, 2001 + 11 / 12)
+
+plot(arima310dummy$residuals) # Pic atténué
+axis(side = 1, 2001 + 11 / 12)
+
+arima310
+arima310dummy
+
+arima011
+arima011dummy
+
+# L'outlier a un effet important sur l'estimation.
+# Le meilleur modèle est le MA(1) selon ce critère.
+
+# Q10 ####
+
+
+breakpoint <- c(1:length(dates))[dates==1995]
+ap1995 <- c(rep(0,breakpoint-1),rep(1,length(dates)-breakpoint+1))
+arima(spread,c(3,1,0),xreg=ap1995,include.mean=F)
+plot(dspread)
+
